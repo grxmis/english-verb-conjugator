@@ -1,3 +1,4 @@
+# main.py
 import streamlit as st
 from fpdf import FPDF
 import io
@@ -47,7 +48,7 @@ PERSONS = [
 ]
 
 # -----------------------------
-# Helper functions
+# Helpers for regular verbs
 def ends_with_cvc(word):
     vowels = "aeiou"
     if len(word) < 3:
@@ -66,7 +67,7 @@ def make_past_and_pp(verb):
         past = verb + "d"
     elif verb.endswith("y") and verb[-2] not in "aeiou":
         past = verb[:-1] + "ied"
-    elif ends_with_cvc(verb) and verb[-1] not in ("w", "x", "y"):
+    elif ends_with_cvc(verb) and verb[-1] not in ("w","x","y"):
         past = verb + verb[-1] + "ed"
     else:
         past = verb + "ed"
@@ -77,12 +78,12 @@ def make_ing(verb):
         return verb[:-2] + "ying"
     if verb.endswith("e") and not verb.endswith("ee"):
         return verb[:-1] + "ing"
-    if ends_with_cvc(verb) and verb[-1] not in ("w", "x", "y"):
+    if ends_with_cvc(verb) and verb[-1] not in ("w","x","y"):
         return verb + verb[-1] + "ing"
     return verb + "ing"
 
 # -----------------------------
-# Conjugation
+# Conjugation functions
 def present_simple(subject, verb, is_third):
     return f"{subject} {make_third_person_s(verb) if is_third else verb}"
 
@@ -90,7 +91,7 @@ def past_simple(subject, verb):
     if verb in IRREGULAR_VERBS:
         p = IRREGULAR_VERBS[verb]["past"]
         if isinstance(p, list):
-            return f"{subject} {p[0]}" if subject in ("I", "He/She/It") else f"{subject} {p[1]}"
+            return f"{subject} {p[0]}" if subject in ("I","He/She/It") else f"{subject} {p[1]}"
         return f"{subject} {p}"
     else:
         past, _ = make_past_and_pp(verb)
@@ -118,11 +119,20 @@ def past_perfect(subject, pp):
 def future_perfect(subject, pp):
     return f"{subject} will have {pp}"
 
+# -----------------------------
+# Build conjugation list
 def conjugate_and_return_lines(verb):
     lines = []
     verb = verb.strip().lower()
     if verb not in ALL_VERBS:
-        lines.append(f"⚠️ Το ρήμα '{verb}' δεν υπάρχει στη λίστα.")
+        return [f"⚠️ Το ρήμα '{verb}' δεν υπάρχει στη λίστα."]
+
+    if verb == "be":
+        for subj, be_pres, be_past, is_third in PERSONS:
+            lines.append(f"**{subj}**")
+            lines.append(f"Present Simple: {subj} {be_pres}")
+            lines.append(f"Past Simple: {subj} {be_past}")
+            lines.append(f"Future Simple: {subj} will be\n")
         return lines
 
     if verb in IRREGULAR_VERBS:
@@ -131,10 +141,11 @@ def conjugate_and_return_lines(verb):
         pp = irr["pp"]
     else:
         past, pp = make_past_and_pp(verb)
+    
     ing = make_ing(verb)
 
     for subj, be_pres, be_past, is_third in PERSONS:
-        lines.append(f"--- {subj} ---")
+        lines.append(f"**{subj}**")
         lines.append(f"Present Simple: {present_simple(subj, verb, is_third)}")
         lines.append(f"Past Simple: {past_simple(subj, verb)}")
         lines.append(f"Future Simple: {future_simple(subj, verb)}")
@@ -143,12 +154,12 @@ def conjugate_and_return_lines(verb):
         lines.append(f"Future Continuous: {future_continuous(subj, ing)}")
         lines.append(f"Present Perfect: {present_perfect(subj, pp, is_third)}")
         lines.append(f"Past Perfect: {past_perfect(subj, pp)}")
-        lines.append(f"Future Perfect: {future_perfect(subj, pp)}")
-        lines.append("")
+        lines.append(f"Future Perfect: {future_perfect(subj, pp)}\n")
+
     return lines
 
 # -----------------------------
-# PDF creation
+# PDF generation
 def build_pdf_bytes(verb, lines, progress_callback=None):
     pdf = FPDF()
     pdf.add_page()
@@ -161,83 +172,86 @@ def build_pdf_bytes(verb, lines, progress_callback=None):
         time.sleep(0.01)
         if progress_callback:
             progress_callback(int((i + 1) / total * 100))
-    return pdf.output(dest='S').encode('latin-1')
+    s = pdf.output(dest='S').encode('latin-1')
+    return s
 
 # -----------------------------
 # Streamlit UI
 st.set_page_config(page_title="English Verb Conjugator", layout="wide")
-st.title("🧠 English Verb Conjugator")
+st.title("English Verb Conjugator — Streamlit Web App")
 
-# Sidebar
-st.sidebar.header("🔎 Search & Controls")
-start_letter = st.sidebar.selectbox(
-    "Filter by starting letter (or All):", ["All"] + sorted({v[0].upper() for v in ALL_VERBS})
-)
-filtered = [v for v in ALL_VERBS if start_letter == "All" or v.startswith(start_letter.lower())]
+st.sidebar.header("Search & controls")
+start_letter = st.sidebar.selectbox("Filter by starting letter:", ["All"] + sorted({w[0].upper() for w in ALL_VERBS}))
+filtered = ALL_VERBS if start_letter == "All" else [w for w in ALL_VERBS if w.startswith(start_letter.lower())]
+
 with st.sidebar.expander("Available verbs"):
     st.write(", ".join(filtered))
 
-# Inputs
 col1, col2 = st.columns([2, 1])
 with col1:
-    verb_input = st.text_input("Type a verb (or select):", "")
+    verb_input = st.text_input("Type a verb:", value="", placeholder="e.g. go")
     chosen = st.selectbox("Or pick from list:", [""] + filtered)
     verb = (verb_input.strip() or chosen).strip().lower()
 with col2:
     conjugate_btn = st.button("Conjugate")
-    list_btn = st.button("List Verbs")
+    list_btn = st.button("List verbs")
     clear_btn = st.button("Clear")
 
 results_area = st.empty()
 
-# Session state
-for key in ["saving", "pdf_bytes", "last_lines", "last_verb"]:
-    if key not in st.session_state:
-        st.session_state[key] = None if "lines" in key else False
+if "pdf_bytes" not in st.session_state:
+    st.session_state.pdf_bytes = None
+if "last_lines" not in st.session_state:
+    st.session_state.last_lines = []
+if "last_verb" not in st.session_state:
+    st.session_state.last_verb = ""
 
-# Actions
 if list_btn:
     results_area.markdown("**📘 Available verbs:**\n\n" + ", ".join(filtered))
 elif clear_btn:
-    st.session_state.update({"pdf_bytes": None, "last_lines": [], "last_verb": ""})
+    st.session_state.last_lines = []
+    st.session_state.pdf_bytes = None
+    st.session_state.last_verb = ""
     results_area.empty()
-
-if conjugate_btn:
+elif conjugate_btn:
     if not verb:
         st.warning("Please type or select a verb first.")
     else:
         lines = conjugate_and_return_lines(verb)
-        st.session_state.update({"last_lines": lines, "last_verb": verb, "pdf_bytes": None})
-        md = [f"<p style='color:black;'>{l}</p>" for l in lines]
-        results_area.markdown("<br>".join(md), unsafe_allow_html=True)
+        st.session_state.last_lines = lines
+        st.session_state.last_verb = verb
+        st.session_state.pdf_bytes = None
+        results_area.markdown("\n".join(lines))
 
-# Save to PDF
 if st.session_state.last_lines:
     st.markdown("---")
+    st.write(f"Selected verb: **{st.session_state.last_verb}**")
+
     save_col1, save_col2 = st.columns([1, 3])
     with save_col1:
-        save_clicked = st.button("💾 Save to PDF", disabled=st.session_state.saving)
-    with save_col2:
-        prog = st.empty() if st.session_state.saving else None
+        save_clicked = st.button("Save to PDF")
 
     if save_clicked:
-        st.session_state.saving = True
-        def cb(p): prog.progress(p)
+        prog = st.progress(0)
+        def cb(p):
+            prog.progress(p)
         pdf_bytes = build_pdf_bytes(st.session_state.last_verb, st.session_state.last_lines, cb)
         st.session_state.pdf_bytes = pdf_bytes
-        st.session_state.saving = False
+        prog.progress(100)
+        time.sleep(0.3)
         prog.empty()
+        st.success("✅ PDF ready to download!")
 
     if st.session_state.pdf_bytes:
         st.download_button(
-            "⬇️ Download PDF",
+            label="Download PDF",
             data=st.session_state.pdf_bytes,
             file_name=f"{st.session_state.last_verb}_conjugation.pdf",
             mime="application/pdf",
         )
-        if st.button("✅ Done (clear)"):
-            st.session_state.update({"pdf_bytes": None, "last_lines": [], "last_verb": ""})
+        if st.button("Done (clear)"):
+            st.session_state.last_lines = []
+            st.session_state.pdf_bytes = None
+            st.session_state.last_verb = ""
+            results_area.empty()
             st.experimental_rerun()
-
-st.markdown("---")
-st.markdown("_Tip: use the sidebar filter to find verbs by their first letter._")
