@@ -1,0 +1,5 @@
+fastapi
+uvicorn
+fpdf
+jinja2
+python-multipart
